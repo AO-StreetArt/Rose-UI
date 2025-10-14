@@ -1,38 +1,119 @@
-.App {
-  text-align: center;
+.app-container {
+  display: flex;
+  height: 100vh;
+  background: #f5f6fa;
+  color: #1d1d1d;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
-.App-logo {
-  height: 40vmin;
-  pointer-events: none;
+.chat-container {
+  flex: 0 0 35%;
+  max-width: 420px;
+  min-width: 320px;
+  padding: 1.5rem;
+  border-right: 1px solid #d8dbe2;
+  overflow-y: auto;
+  background: #ffffff;
+  display: flex;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
+.chat-panel {
+  flex: 1;
+  display: flex;
 }
 
-.App-header {
-  background-color: #282c34;
-  min-height: 100vh;
+.visual-container {
+  flex: 1;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-size: calc(10px + 2vmin);
-  color: white;
+  gap: 1.5rem;
+  padding: 1.5rem;
+  overflow: auto;
 }
 
-.App-link {
-  color: #61dafb;
+.visual-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(15, 23, 42, 0.08);
+  padding: 1rem 1.5rem;
 }
 
-@keyframes App-logo-spin {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.visual-item h2 {
+  font-size: 1.1rem;
+  margin: 0;
+}
+
+.babylon-canvas {
+  width: 100%;
+  height: 100%;
+  flex: 1;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #1d3557, #457b9d);
+}
+
+.image-gallery-panel {
+  flex: 1;
+}
+
+.image-gallery-panel .image-gallery-slide img {
+  border-radius: 6px;
+}
+
+.rcw-widget-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  position: static !important;
+  right: auto !important;
+  bottom: auto !important;
+  margin: 0 !important;
+  height: 100%;
+  box-shadow: none;
+  z-index: auto !important;
+}
+
+.rcw-launcher {
+  display: none;
+}
+
+.rcw-conversation-container {
+  flex: 1;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.1);
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rcw-new-message {
+  border-radius: 0 0 8px 8px;
+}
+
+.rcw-messages-container {
+  flex: 1 1 auto;
+  height: auto !important;
+  max-height: none !important;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+.rcw-sender {
+  flex-shrink: 0;
+  margin-top: auto;
+}
+
+.rcw-header {
+  border-radius: 8px 8px 0 0;
+  background: #5661b3;
+}
+
+.rcw-header h4,
+.rcw-header span {
+  color: #fff;
 }
