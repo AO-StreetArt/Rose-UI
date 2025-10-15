@@ -22,7 +22,13 @@ const buildConfig = () => {
   const audience = process.env.REACT_APP_AUTH0_AUDIENCE;
   const redirectUri =
     process.env.REACT_APP_AUTH0_REDIRECT_URI || `${window.location.origin}/auth/callback`;
-  const scope = process.env.REACT_APP_AUTH0_SCOPE || 'openid profile email';
+  let scope = process.env.REACT_APP_AUTH0_SCOPE || 'openid profile email';
+
+  const scopeSet = new Set(scope.split(/\s+/).filter(Boolean));
+  if (!scopeSet.has('offline_access')) {
+    scopeSet.add('offline_access');
+  }
+  scope = Array.from(scopeSet).join(' ');
 
   if (!domain || !clientId) {
     return null;
@@ -46,6 +52,22 @@ const buildConfig = () => {
   };
 };
 
+const isMissingRefreshTokenError = (error) => {
+  if (!error) {
+    return false;
+  }
+
+  if (error.error === 'missing_refresh_token') {
+    return true;
+  }
+
+  if (typeof error.message === 'string') {
+    return error.message.toLowerCase().includes('missing refresh token');
+  }
+
+  return false;
+};
+
 export const AuthProvider = ({ children }) => {
   const [client, setClient] = useState(null);
   const [state, setState] = useState(defaultState);
@@ -66,8 +88,9 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     const initialize = async () => {
+      let auth0Client;
       try {
-        const auth0Client = await createAuth0Client(config);
+        auth0Client = await createAuth0Client(config);
         if (!isMounted) {
           return;
         }
@@ -104,6 +127,23 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Auth0 authentication error', error);
+
+        const needsRelogin = auth0Client && isMissingRefreshTokenError(error);
+        if (needsRelogin) {
+          try {
+            await auth0Client.loginWithRedirect({
+              authorizationParams: {
+                ...config.authorizationParams,
+                prompt: 'consent',
+              },
+            });
+            return;
+          } catch (redirectError) {
+            // eslint-disable-next-line no-console
+            console.error('Auth0 re-login after missing refresh token failed', redirectError);
+          }
+        }
+
         if (isMounted) {
           setState({
             isAuthenticated: false,
@@ -170,6 +210,24 @@ export const AuthProvider = ({ children }) => {
       } catch (error) {
         // eslint-disable-next-line no-console
         console.error('Auth0 token retrieval error', error);
+
+        const needsRelogin = isMissingRefreshTokenError(error);
+        if (needsRelogin) {
+          try {
+            const config = buildConfig();
+            await client.loginWithRedirect({
+              authorizationParams: {
+                ...(config?.authorizationParams ?? {}),
+                prompt: 'consent',
+              },
+            });
+            return null;
+          } catch (redirectError) {
+            // eslint-disable-next-line no-console
+            console.error('Auth0 re-login after missing refresh token failed', redirectError);
+          }
+        }
+
         setState((prev) => ({
           ...prev,
           error,
