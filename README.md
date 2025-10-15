@@ -1,4 +1,30 @@
-# Getting Started with Create React App
+# Rose UI
+
+SPA built with Create React App that now enforces Auth0 authentication via the redirect flow using `@auth0/auth0-spa-js`.
+
+## Auth0 Authentication Setup
+
+Create a `.env` file (or otherwise inject build-time variables) with the following values from your Auth0 tenant:
+
+```
+REACT_APP_AUTH0_DOMAIN=your-tenant.us.auth0.com
+REACT_APP_AUTH0_CLIENT_ID={spaClientId}
+REACT_APP_AUTH0_AUDIENCE=https://{yourApiIdentifier}   # optional but recommended
+REACT_APP_AUTH0_REDIRECT_URI=https://{yourAppDomain}/auth/callback
+REACT_APP_AUTH0_SCOPE=openid profile email
+```
+
+During development you can set `REACT_APP_AUTH0_REDIRECT_URI=http://localhost:3000/auth/callback`. The app will automatically redirect unauthenticated visitors to Auth0 and persist tokens in `localStorage`.
+
+Install dependencies (including `@auth0/auth0-spa-js`) with:
+
+```bash
+npm install
+```
+
+When the SPA loads it will redirect to Auth0 for sign-in. Authenticated requests pull an access token from Auth0 and call the Flask backend's `/api/chat` endpoint with it, so make sure `REACT_APP_AUTH0_AUDIENCE` matches the API identifier configured in Auth0 and that the Flask service is reachable at the same origin or proxied accordingly.
+
+## Getting Started with Create React App
 
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
