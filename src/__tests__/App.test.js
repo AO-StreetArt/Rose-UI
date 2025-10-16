@@ -5,7 +5,7 @@ const mockToastShow = jest.fn();
 const mockImageGalleryPanel = jest.fn(() => <div data-testid="image-gallery" />);
 
 jest.mock('primereact/button', () => ({
-  Button: ({ label, onClick, ...props }) => (
+  Button: ({ label, onClick, loading, ...props }) => (
     <button type="button" onClick={onClick} {...props}>
       {label}
     </button>

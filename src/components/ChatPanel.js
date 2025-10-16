@@ -1,110 +1,203 @@
-import { useEffect, useRef, useState } from 'react';
-import {
-  Widget,
-  addResponseMessage,
-  isWidgetOpened,
-  toggleWidget,
-} from 'react-chat-widget';
-import 'react-chat-widget/lib/styles.css';
+import { useCallback, useMemo, useRef } from 'react';
+import ChatBot, {
+  ChatBotProvider,
+  RcbEvent,
+  useChatWindow,
+  useMessages,
+  useOnRcbEvent,
+  useTextArea,
+} from 'react-chatbotify';
 import { useAuth } from '../auth/AuthProvider';
 
-const ChatPanel = () => {
-  const initializedRef = useRef(false);
+const ChatPanelInner = ({ flow, settings }) => {
   const sessionRef = useRef(null);
-  const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
   const { getAccessToken, isAuthenticated, login } = useAuth();
+  const messagesApi = useMessages();
+  const textAreaApi = useTextArea();
+  const chatWindowApi = useChatWindow();
 
-  useEffect(() => {
-    if (initializedRef.current) {
-      return;
-    }
+  const injectMessage = messagesApi?.injectMessage;
+  const setTextAreaValue = textAreaApi?.setTextAreaValue;
+  const toggleTextAreaDisabled = textAreaApi?.toggleTextAreaDisabled;
+  const toggleIsBotTyping = chatWindowApi?.toggleIsBotTyping;
 
-    addResponseMessage(
-      `Hello!  My name is Rose, and I am here to help!  I am unique from other AI Agents because of my spatial awareness - try uploading an image and we can discuss it!`
-    );
-
-    if (!isWidgetOpened()) {
-      toggleWidget();
-    }
-
-    initializedRef.current = true;
-  }, []);
-
-  const handleNewUserMessage = async (message) => {
-    if (isSending) {
-      addResponseMessage('Still working on the last request, please wait a moment.');
-      return;
-    }
-
-    setIsSending(true);
-
-    try {
-      if (!isAuthenticated) {
-        await login();
-        addResponseMessage('Redirecting to authenticate. Try again after signing in.');
+  const handleUserSubmit = useCallback(
+    async (event) => {
+      if (
+        !injectMessage ||
+        !setTextAreaValue ||
+        !toggleTextAreaDisabled ||
+        !toggleIsBotTyping
+      ) {
+        event?.preventDefault?.();
         return;
       }
 
-      const token = await getAccessToken();
+      const incomingMessage = event?.data?.inputText ?? '';
+      const message = incomingMessage.trim();
 
-      if (!token) {
-        addResponseMessage('Unable to retrieve your access token. Please sign in again.');
+      if (!message) {
+        event.preventDefault();
+        await setTextAreaValue('');
         return;
       }
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          message,
-          sessionId: sessionRef.current,
-        }),
-      });
+      event.preventDefault();
+      await setTextAreaValue('');
 
-      if (!response.ok) {
-        const errorPayload = await response.json().catch(() => ({}));
-        const errorMessage = errorPayload.error || 'Unexpected error talking to the server.';
-        addResponseMessage(errorMessage);
+      if (isSendingRef.current) {
+        await injectMessage(message, 'USER');
+        await injectMessage('Still working on the last request, please wait a moment.', 'BOT');
         return;
       }
 
-      const data = await response.json();
-      sessionRef.current = data.sessionId || sessionRef.current;
+      isSendingRef.current = true;
+      toggleTextAreaDisabled(true);
+      await injectMessage(message, 'USER');
 
-      const replies = Array.isArray(data.messages) ? data.messages : [];
-      if (!replies.length) {
-        addResponseMessage('The assistant did not return any content.');
-        return;
-      }
-
-      replies.forEach((reply) => {
-        if (reply?.content) {
-          addResponseMessage(reply.content);
+      try {
+        if (!isAuthenticated) {
+          await login();
+          await injectMessage('Redirecting to authenticate. Try again after signing in.', 'BOT');
+          return;
         }
-      });
-    } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Chat request failed', error);
-      addResponseMessage('Failed to reach the chat service. Please try again.');
-    } finally {
-      setIsSending(false);
-    }
-  };
+
+        const token = await getAccessToken();
+
+        if (!token) {
+          await injectMessage('Unable to retrieve your access token. Please sign in again.', 'BOT');
+          return;
+        }
+
+        toggleIsBotTyping(true);
+
+        const response = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            message,
+            sessionId: sessionRef.current,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorPayload = await response.json().catch(() => ({}));
+          const errorMessage = errorPayload.error || 'Unexpected error talking to the server.';
+          await injectMessage(errorMessage, 'BOT');
+          return;
+        }
+
+        const data = await response.json();
+        sessionRef.current = data.sessionId || sessionRef.current;
+
+        const replies = Array.isArray(data.messages) ? data.messages : [];
+        if (!replies.length) {
+          await injectMessage('The assistant did not return any content.', 'BOT');
+          return;
+        }
+
+        // ensure replies render sequentially with consistent sender roles
+        // eslint-disable-next-line no-restricted-syntax
+        for (const reply of replies) {
+          if (reply?.content) {
+            const { role } = reply;
+            const sender = typeof role === 'string' && role.toUpperCase() === 'SYSTEM' ? 'SYSTEM' : 'BOT';
+            // eslint-disable-next-line no-await-in-loop
+            await injectMessage(reply.content, sender);
+          }
+        }
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('Chat request failed', error);
+        await injectMessage('Failed to reach the chat service. Please try again.', 'BOT');
+      } finally {
+        toggleIsBotTyping(false);
+        toggleTextAreaDisabled(false);
+        isSendingRef.current = false;
+      }
+    },
+    [
+      getAccessToken,
+      injectMessage,
+      isAuthenticated,
+      login,
+      setTextAreaValue,
+      toggleIsBotTyping,
+      toggleTextAreaDisabled,
+    ]
+  );
+
+  useOnRcbEvent(RcbEvent.USER_SUBMIT_TEXT, handleUserSubmit);
+
+  return <ChatBot flow={flow} settings={settings} />;
+};
+
+const ChatPanel = () => {
+  const greetingMessage =
+    'Hello!  My name is Rose, and I am here to help!  I am unique from other AI Agents because of my spatial awareness - try uploading an image and we can discuss it!';
+  const flow = useMemo(
+    () => ({
+      start: {
+        message: greetingMessage,
+        path: 'await_user_input',
+      },
+      await_user_input: {
+        chatDisabled: false,
+      },
+    }),
+    [greetingMessage]
+  );
+  const settings = useMemo(
+    () => ({
+      general: {
+        showFooter: false,
+        embedded: true,
+      },
+      header: {
+        title: 'Chat',
+        showAvatar: false,
+      },
+      chatWindow: {
+        defaultOpen: true,
+        autoJumpToBottom: true,
+        showTypingIndicator: true,
+      },
+      chatInput: {
+        enabledPlaceholderText: 'Type a message...',
+        disabledPlaceholderText: 'Working on it...',
+        blockSpam: true,
+      },
+      notification: {
+        disabled: true,
+      },
+      audio: {
+        disabled: true,
+      },
+      voice: {
+        disabled: true,
+      },
+      fileAttachment: {
+        disabled: true,
+      },
+      emoji: {
+        disabled: true,
+      },
+      event: {
+        rcbUserSubmitText: true,
+      },
+    }),
+    []
+  );
 
   return (
     <div className="chat-panel">
-      <Widget
-        title="Chat"
-        subtitle='What would you like to explore?'
-        senderPlaceHolder="Type a message..."
-        showCloseButton={false}
-        fullScreenMode={false}
-        handleNewUserMessage={handleNewUserMessage}
-        launcher={() => null}
-      />
+      <ChatBotProvider>
+        <ChatPanelInner flow={flow} settings={settings} />
+      </ChatBotProvider>
     </div>
   );
 };
