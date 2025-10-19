@@ -8,6 +8,71 @@ import ChatBot, {
   useTextArea,
 } from 'react-chatbotify';
 import { useAuth } from '../auth/AuthProvider';
+import {
+  addGalleryImageByUrl,
+  getActiveGalleryImageUrl,
+  setActiveGalleryImageUrl,
+} from '../galleryController';
+
+const arrayBufferToBase64 = (buffer) => {
+  if (!buffer) {
+    return '';
+  }
+
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 8192;
+  let binary = '';
+
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    const chunk = bytes.subarray(offset, offset + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+
+  return btoa(binary);
+};
+
+const prepareChatImagePayload = async (url) => {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) {
+    return null;
+  }
+
+  if (trimmedUrl.toLowerCase().startsWith('s3://')) {
+    return {
+      image: {
+        s3Url: trimmedUrl,
+      },
+    };
+  }
+
+  try {
+    const response = await fetch(trimmedUrl, { mode: 'cors' });
+    if (!response.ok) {
+      return null;
+    }
+
+    const contentType = response.headers.get('content-type') || 'image/png';
+    const buffer = await response.arrayBuffer();
+    if (!buffer || buffer.byteLength === 0) {
+      return null;
+    }
+
+    return {
+      image: {
+        base64: arrayBufferToBase64(buffer),
+        mediaType: contentType,
+      },
+    };
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error('Unable to prepare chat image attachment', error);
+    return null;
+  }
+};
 
 const ChatPanelInner = ({ flow, settings }) => {
   const sessionRef = useRef(null);
@@ -72,6 +137,9 @@ const ChatPanelInner = ({ flow, settings }) => {
 
         toggleIsBotTyping(true);
 
+        const activeImageUrl = getActiveGalleryImageUrl();
+        const imagePayload = await prepareChatImagePayload(activeImageUrl);
+
         const response = await fetch('/api/chat', {
           method: 'POST',
           headers: {
@@ -81,6 +149,7 @@ const ChatPanelInner = ({ flow, settings }) => {
           body: JSON.stringify({
             message,
             sessionId: sessionRef.current,
+            ...(imagePayload ?? {}),
           }),
         });
 
@@ -99,6 +168,39 @@ const ChatPanelInner = ({ flow, settings }) => {
           await injectMessage('The assistant did not return any content.', 'BOT');
           return;
         }
+
+        const artifacts = Array.isArray(data.artifacts) ? data.artifacts : [];
+        const displayImages = Array.isArray(data.displayImages) ? data.displayImages : [];
+
+        artifacts.forEach((artifact) => {
+          const url = artifact?.url;
+          if (!url) {
+            return;
+          }
+
+          addGalleryImageByUrl(url, {
+            description: artifact?.label,
+            sourceId: artifact?.id ?? url,
+            metadata: artifact,
+          });
+        });
+
+        displayImages.forEach((item, index) => {
+          const url = item?.url;
+          if (!url) {
+            return;
+          }
+
+          addGalleryImageByUrl(url, {
+            description: item?.description ?? item?.message,
+            sourceId: item?.id ?? url,
+            metadata: item,
+          });
+
+          if (index === 0) {
+            setActiveGalleryImageUrl(url);
+          }
+        });
 
         // ensure replies render sequentially with consistent sender roles
         // eslint-disable-next-line no-restricted-syntax
@@ -120,15 +222,7 @@ const ChatPanelInner = ({ flow, settings }) => {
         isSendingRef.current = false;
       }
     },
-    [
-      getAccessToken,
-      injectMessage,
-      isAuthenticated,
-      login,
-      setTextAreaValue,
-      toggleIsBotTyping,
-      toggleTextAreaDisabled,
-    ]
+    [getAccessToken, injectMessage, isAuthenticated, login, setTextAreaValue, toggleIsBotTyping, toggleTextAreaDisabled]
   );
 
   useOnRcbEvent(RcbEvent.USER_SUBMIT_TEXT, handleUserSubmit);
